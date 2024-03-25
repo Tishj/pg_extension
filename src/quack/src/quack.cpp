@@ -1,4 +1,5 @@
 #include "quack.hpp"
+#include "duckdb/main/connection.hpp"
 
 extern "C" {
 

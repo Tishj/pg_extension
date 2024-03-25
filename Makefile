@@ -14,5 +14,11 @@ debug:
 	cmake --build . --config Debug && \
 	cmake --build . --target install
 
+format:
+	cp src/quack/third_party/duckdb/.clang-format .
+	find src/ -iname "*.hpp" -o -iname "*.cpp" | xargs clang-format --sort-includes=0 -style=file -i
+	cmake-format -i CMakeLists.txt
+	rm .clang-format
+
 clean:
 	rm -rf build

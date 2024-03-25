@@ -14,10 +14,12 @@ struct PostgresReplacementScanData : public ReplacementScanData {
 public:
 	PostgresReplacementScanData(QueryDesc *desc);
 	~PostgresReplacementScanData() override;
+
 public:
 	QueryDesc *desc;
 };
 
-unique_ptr<TableRef> PostgresReplacementScan(ClientContext &context, const string &table_name, ReplacementScanData *data);
+unique_ptr<TableRef> PostgresReplacementScan(ClientContext &context, const string &table_name,
+                                             ReplacementScanData *data);
 
 } // namespace duckdb

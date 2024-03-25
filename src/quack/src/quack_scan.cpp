@@ -3,7 +3,9 @@
 //#undef FATAL
 //#endif
 
-#include "duckdb.hpp"
+#include "duckdb/main/client_context.hpp"
+#include "duckdb/function/replacement_scan.hpp"
+
 #include "quack.hpp"
 #include "quack_scan.hpp"
 
@@ -31,7 +33,7 @@ PostgresReplacementScanData::~PostgresReplacementScanData() {
 
 unique_ptr<TableRef> PostgresReplacementScan(ClientContext &context, const string &table_name,
                                              ReplacementScanData *data) {
-	auto &scan_data = reinterpret_cast<CAPIReplacementScanData &>(*data);
+	auto &scan_data = reinterpret_cast<ReplacementScanData &>(*data);
 	// Use 'QueryDesc *desc' to query the postgres table
 	// We will return a custom table function scan with parameters (likely passing a pointer as parameter)
 
