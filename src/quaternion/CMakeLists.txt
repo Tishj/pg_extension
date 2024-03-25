@@ -12,9 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+include_directories(src/include)
+add_subdirectory(src)
+
+set(ALL_OBJECT_FILES ${ALL_OBJECT_FILES})
+
 add_postgresql_extension(
   quaternion
   VERSION 1.0
-  SOURCES quaternion.c
+  SOURCES ${ALL_OBJECT_FILES}
   SCRIPTS quaternion--1.0.sql
   REGRESS basic)
