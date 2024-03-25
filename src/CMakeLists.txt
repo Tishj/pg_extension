@@ -12,5 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -DDEBUG -Wall ${M32_FLAG} ${CXX_EXTRA}")
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(quaternion)

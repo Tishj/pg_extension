@@ -192,6 +192,7 @@ function(add_postgresql_extension NAME)
   # extension.
   add_library(${NAME} MODULE ${_ext_SOURCES})
 
+
   set(_link_flags "${PostgreSQL_SHARED_LINK_OPTIONS}")
   foreach(_dir ${PostgreSQL_SERVER_LIBRARY_DIRS})
     set(_link_flags "${_link_flags} -L${_dir}")
@@ -222,6 +223,7 @@ function(add_postgresql_extension NAME)
     PRIVATE ${PostgreSQL_SERVER_INCLUDE_DIRS}
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+
   # Generate control file at build time (which is when GENERATE evaluate the
   # contents). We do not know the target file name until then.
   set(_control_file "${CMAKE_CURRENT_BINARY_DIR}/${NAME}.control")
@@ -251,8 +253,7 @@ $<$<NOT:$<BOOL:${_ext_REQUIRES}>>:#>requires = '$<JOIN:${_ext_REQUIRES},$<COMMA>
 ")
 
   install(TARGETS ${NAME} LIBRARY DESTINATION ${PostgreSQL_PACKAGE_LIBRARY_DIR})
-  install(FILES ${_control_file} ${_script_files}
-          DESTINATION ${PostgreSQL_EXTENSION_DIR})
+  install(FILES ${_control_file} ${_script_files} DESTINATION ${PostgreSQL_EXTENSION_DIR})
 
   if(_ext_REGRESS)
     foreach(_test ${_ext_REGRESS})
