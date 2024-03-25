@@ -12,9 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -DDEBUG -Wall ${M32_FLAG} ${CXX_EXTRA}")
+include_directories(src/include)
+add_subdirectory(src)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+set(ALL_OBJECT_FILES ${ALL_OBJECT_FILES})
 
-add_subdirectory(quack)
-#add_subdirectory(quaternion)
+add_postgresql_extension(
+  quack
+  VERSION 0.0.1
+  SOURCES ${ALL_OBJECT_FILES}
+  SCRIPTS quack--0.0.1.sql
+)
