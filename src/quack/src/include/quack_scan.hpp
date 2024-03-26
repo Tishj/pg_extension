@@ -39,6 +39,7 @@ public:
 public:
 	TableScanDesc scanDesc = nullptr;
 	const struct TableAmRoutine *tableam;
+	bool exhausted_scan = false;
 };
 
 // Global State

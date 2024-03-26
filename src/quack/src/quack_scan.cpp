@@ -241,6 +241,7 @@ void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInp
 
 	auto &relation = data.relation;
 	auto snapshot = data.snapshot;
+	auto &exhausted_scan = lstate.exhausted_scan;
 
 	auto rel = relation.GetRelation();
 
@@ -249,10 +250,14 @@ void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInp
 
 	auto slot = table_slot_create(rel, NULL);
 	idx_t count = 0;
-	while (rel->rd_tableam->scan_getnextslot(scanDesc, ForwardScanDirection, slot)) {
+	for (; count < STANDARD_VECTOR_SIZE && !exhausted_scan; count++) {
+		auto has_tuple = rel->rd_tableam->scan_getnextslot(scanDesc, ForwardScanDirection, slot);
+		if (!has_tuple) {
+			exhausted_scan = true;
+			break;
+		}
 		// Received a tuple, insert it into the DataChunk
 		InsertTupleIntoChunk(output, tupleDesc, slot, count);
-		count++;
 	}
 	ExecDropSingleTupleTableSlot(slot);
 	output.SetCardinality(count);
