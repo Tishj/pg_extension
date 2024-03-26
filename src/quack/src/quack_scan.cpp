@@ -148,14 +148,26 @@ unique_ptr<GlobalTableFunctionState> PostgresScanFunction::PostgresInitGlobal(Cl
 
 // Local State
 
-PostgresScanLocalState::PostgresScanLocalState() {
+PostgresScanLocalState::PostgresScanLocalState(PostgresRelation &relation, Snapshot snapshot) {
+	auto rel = relation.GetRelation();
+	tableam = rel->rd_tableam;
+
+	// Initialize the scan state
+	uint32 flags = SO_TYPE_SEQSCAN | SO_ALLOW_STRAT | SO_ALLOW_SYNC | SO_ALLOW_PAGEMODE;
+	scanDesc = rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags);
+}
+PostgresScanLocalState::~PostgresScanLocalState() {
+	// Close the scan state
+	tableam->scan_end(scanDesc);
 }
 
 unique_ptr<LocalTableFunctionState> PostgresScanFunction::PostgresInitLocal(ExecutionContext &context,
                                                                             TableFunctionInitInput &input,
                                                                             GlobalTableFunctionState *gstate) {
-	// FIXME: we'll call 'scan_begin' here to create a scan
-	return make_uniq<PostgresScanLocalState>();
+	auto &bind_data = input.bind_data->CastNoConst<PostgresScanFunctionData>();
+	auto &relation = bind_data.relation;
+	auto snapshot = bind_data.snapshot;
+	return make_uniq<PostgresScanLocalState>(relation, snapshot);
 }
 
 template <class T>
@@ -231,11 +243,9 @@ void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInp
 	auto snapshot = data.snapshot;
 
 	auto rel = relation.GetRelation();
-	auto access_method_handler = GetTableAmRoutine(rel->rd_amhandler);
 
 	TupleDesc tupleDesc = RelationGetDescr(rel);
-	uint32 flags = SO_TYPE_SEQSCAN | SO_ALLOW_STRAT | SO_ALLOW_SYNC | SO_ALLOW_PAGEMODE;
-	TableScanDesc scanDesc = rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags);
+	auto scanDesc = lstate.scanDesc;
 
 	auto slot = table_slot_create(rel, NULL);
 	idx_t count = 0;
@@ -245,7 +255,6 @@ void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInp
 		count++;
 	}
 	ExecDropSingleTupleTableSlot(slot);
-	rel->rd_tableam->scan_end(scanDesc);
 	output.SetCardinality(count);
 }
 

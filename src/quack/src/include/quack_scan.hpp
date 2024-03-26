@@ -32,7 +32,13 @@ namespace duckdb {
 // Local State
 
 struct PostgresScanLocalState : public LocalTableFunctionState {
-	PostgresScanLocalState();
+public:
+	PostgresScanLocalState(PostgresRelation &relation, Snapshot snapshot);
+	~PostgresScanLocalState() override;
+
+public:
+	TableScanDesc scanDesc = nullptr;
+	const struct TableAmRoutine *tableam;
 };
 
 // Global State
