@@ -142,6 +142,7 @@ unique_ptr<GlobalTableFunctionState> PostgresScanFunction::PostgresInitGlobal(Cl
                                                                               TableFunctionInitInput &input) {
 	auto &bind_data = input.bind_data->Cast<PostgresScanFunctionData>();
 	auto &relation = bind_data.relation;
+	// FIXME: we'll call 'parallelscan_initialize' here to initialize a parallel scan
 	return make_uniq<PostgresScanGlobalState>();
 }
 
@@ -153,10 +154,73 @@ PostgresScanLocalState::PostgresScanLocalState() {
 unique_ptr<LocalTableFunctionState> PostgresScanFunction::PostgresInitLocal(ExecutionContext &context,
                                                                             TableFunctionInitInput &input,
                                                                             GlobalTableFunctionState *gstate) {
+	// FIXME: we'll call 'scan_begin' here to create a scan
 	return make_uniq<PostgresScanLocalState>();
 }
 
+template <class T>
+static void Append(Vector &result, T value, idx_t offset) {
+	auto data = FlatVector::GetData<T>(result);
+	data[offset] = value;
+}
+
+static void AppendString(Vector &result, Datum value, idx_t offset) {
+	const char *text = VARDATA_ANY(value);
+	int len = VARSIZE_ANY_EXHDR(value);
+	string_t str(text, len);
+
+	auto data = FlatVector::GetData<string_t>(result);
+	data[offset] = StringVector::AddString(result, str);
+}
+
 // The table scan function
+static void ConvertDatumToDuckDB(Datum value, Vector &result, idx_t offset) {
+	constexpr int32_t QUACK_DUCK_DATE_OFFSET = 10957;
+	constexpr int64_t QUACK_DUCK_TIMESTAMP_OFFSET = INT64CONST(10957) * USECS_PER_DAY;
+
+	switch (result.GetType().id()) {
+	case LogicalTypeId::BOOLEAN:
+		Append<bool>(result, DatumGetBool(value), offset);
+		break;
+	case LogicalTypeId::TINYINT:
+		Append<int8_t>(result, DatumGetChar(value), offset);
+		break;
+	case LogicalTypeId::SMALLINT:
+		Append<int16_t>(result, DatumGetInt16(value), offset);
+		break;
+	case LogicalTypeId::INTEGER:
+		Append<int32_t>(result, DatumGetInt32(value), offset);
+		break;
+	case LogicalTypeId::BIGINT:
+		Append<int64_t>(result, DatumGetInt64(value), offset);
+		break;
+	case LogicalTypeId::VARCHAR:
+		AppendString(result, value, offset);
+		break;
+	case LogicalTypeId::DATE:
+		Append<date_t>(result, date_t(static_cast<int32_t>(value + QUACK_DUCK_DATE_OFFSET)), offset);
+		break;
+	case LogicalTypeId::TIMESTAMP:
+		Append<dtime_t>(result, dtime_t(static_cast<int64_t>(value + QUACK_DUCK_TIMESTAMP_OFFSET)), offset);
+		break;
+	default:
+		elog(ERROR, "Unsupported quack type: %hhu", result.GetType().id());
+		break;
+	}
+}
+
+static void InsertTupleIntoChunk(DataChunk &output, TupleDesc tuple, TupleTableSlot *slot, idx_t offset) {
+	for (int i = 0; i < tuple->natts; i++) {
+		auto &result = output.data[i];
+		Datum value = slot_getattr(slot, i + 1, &slot->tts_isnull[i]);
+		if (slot->tts_isnull[i]) {
+			auto &array_mask = FlatVector::Validity(result);
+			array_mask.SetInvalid(offset);
+		} else {
+			ConvertDatumToDuckDB(value, result, offset);
+		}
+	}
+}
 
 void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = data_p.bind_data->CastNoConst<PostgresScanFunctionData>();
@@ -166,7 +230,23 @@ void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInp
 	auto &relation = data.relation;
 	auto snapshot = data.snapshot;
 
-	return;
+	auto rel = relation.GetRelation();
+	auto access_method_handler = GetTableAmRoutine(rel->rd_amhandler);
+
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	uint32 flags = SO_TYPE_SEQSCAN | SO_ALLOW_STRAT | SO_ALLOW_SYNC | SO_ALLOW_PAGEMODE;
+	TableScanDesc scanDesc = rel->rd_tableam->scan_begin(rel, snapshot, 0, NULL, NULL, flags);
+
+	auto slot = table_slot_create(rel, NULL);
+	idx_t count = 0;
+	while (rel->rd_tableam->scan_getnextslot(scanDesc, ForwardScanDirection, slot)) {
+		// Received a tuple, insert it into the DataChunk
+		InsertTupleIntoChunk(output, tupleDesc, slot, count);
+		count++;
+	}
+	ExecDropSingleTupleTableSlot(slot);
+	rel->rd_tableam->scan_end(scanDesc);
+	output.SetCardinality(count);
 }
 
 // ------- Replacement Scan -------
@@ -228,7 +308,7 @@ unique_ptr<TableRef> PostgresReplacementScan(ClientContext &context, const strin
 	// snapshot = POINTER(snapshot)
 	children.push_back(make_uniq<ComparisonExpression>(
 	    ExpressionType::COMPARE_EQUAL, make_uniq<ColumnRefExpression>("snapshot"),
-	    make_uniq<ConstantExpression>(Value::POINTER(CastPointerToValue(scan_data.desc->snapshot)))));
+	    make_uniq<ConstantExpression>(Value::POINTER(CastPointerToValue(scan_data.desc->estate->es_snapshot)))));
 	table_function->function = make_uniq<FunctionExpression>("postgres_scan", std::move(children));
 	return std::move(table_function);
 }
