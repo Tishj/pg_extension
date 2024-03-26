@@ -8,6 +8,25 @@ extern "C" {
 #include "executor/executor.h"
 } // extern "C"
 
+// Postgres Relation
+
+class PostgresRelation {
+public:
+	PostgresRelation(RangeTblEntry *table);
+	~PostgresRelation();
+	PostgresRelation(const PostgresRelation &other) = delete;
+	PostgresRelation &operator=(const PostgresRelation &other) = delete;
+	PostgresRelation &operator=(PostgresRelation &&other) = delete;
+	PostgresRelation(PostgresRelation &&other);
+
+public:
+	Relation GetRelation();
+	bool IsValid() const;
+
+private:
+	Relation rel = nullptr;
+};
+
 namespace duckdb {
 
 // Local State
@@ -28,11 +47,12 @@ struct PostgresScanGlobalState : public GlobalTableFunctionState {
 
 struct PostgresScanFunctionData : public TableFunctionData {
 public:
-	PostgresScanFunctionData(RangeTblEntry *table);
+	PostgresScanFunctionData(PostgresRelation &&relation, Snapshot snapshot);
 	~PostgresScanFunctionData() override;
 
 public:
-	RangeTblEntry *table;
+	PostgresRelation relation;
+	Snapshot snapshot;
 };
 
 // ------- Table Function -------

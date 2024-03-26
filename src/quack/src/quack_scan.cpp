@@ -8,6 +8,9 @@
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/comparison_expression.hpp"
+#include "duckdb/parser/expression/columnref_expression.hpp"
+#include "duckdb/common/enums/expression_type.hpp"
 
 #include "quack.hpp"
 #include "quack_scan.hpp"
@@ -27,18 +30,43 @@ extern "C" {
 #include "utils/builtins.h"
 }
 
+// Postgres Relation
+
+PostgresRelation::PostgresRelation(RangeTblEntry *table) : rel(RelationIdGetRelation(table->relid)) {
+}
+
+PostgresRelation::~PostgresRelation() {
+	if (IsValid()) {
+		RelationClose(rel);
+	}
+}
+
+Relation PostgresRelation::GetRelation() {
+	return rel;
+}
+
+bool PostgresRelation::IsValid() const {
+	return RelationIsValid(rel);
+}
+
+PostgresRelation::PostgresRelation(PostgresRelation &&other) : rel(other.rel) {
+	other.rel = nullptr;
+}
+
 namespace duckdb {
 
 // ------- Table Function -------
 
 PostgresScanFunction::PostgresScanFunction()
-    : TableFunction("postgres_scan", {LogicalType::POINTER}, PostgresFunc, PostgresBind, PostgresInitGlobal,
-                    PostgresInitLocal) {
+    : TableFunction("postgres_scan", {}, PostgresFunc, PostgresBind, PostgresInitGlobal, PostgresInitLocal) {
+	named_parameters["table"] = LogicalType::POINTER;
+	named_parameters["snapshot"] = LogicalType::POINTER;
 }
 
 // Bind Data
 
-PostgresScanFunctionData::PostgresScanFunctionData(RangeTblEntry *table) : table(table) {
+PostgresScanFunctionData::PostgresScanFunctionData(PostgresRelation &&relation, Snapshot snapshot)
+    : relation(std::move(relation)), snapshot(snapshot) {
 }
 
 PostgresScanFunctionData::~PostgresScanFunctionData() {
@@ -71,15 +99,15 @@ static LogicalType PostgresToDuck(Oid type) {
 
 unique_ptr<FunctionData> PostgresScanFunction::PostgresBind(ClientContext &context, TableFunctionBindInput &input,
                                                             vector<LogicalType> &return_types, vector<string> &names) {
-	auto table = (reinterpret_cast<RangeTblEntry *>(input.inputs[0].GetPointer()));
+	auto table = (reinterpret_cast<RangeTblEntry *>(input.named_parameters["table"].GetPointer()));
+	auto snapshot = (reinterpret_cast<Snapshot>(input.named_parameters["snapshot"].GetPointer()));
 
 	D_ASSERT(table->relid);
-	auto rel = RelationIdGetRelation(table->relid);
+	auto rel = PostgresRelation(table);
 
-	auto tupleDesc = RelationGetDescr(rel);
+	auto tupleDesc = RelationGetDescr(rel.GetRelation());
 	if (!tupleDesc) {
 		elog(ERROR, "Failed to get tuple descriptor for relation with OID %u", table->relid);
-		RelationClose(rel);
 		return nullptr;
 	}
 
@@ -98,12 +126,11 @@ unique_ptr<FunctionData> PostgresScanFunction::PostgresBind(ClientContext &conte
 	}
 
 	// FIXME: check this in the replacement scan
-	D_ASSERT(rel->rd_amhandler != 0);
+	D_ASSERT(rel.GetRelation()->rd_amhandler != 0);
 	// These are the methods we need to interact with the table
-	auto access_method_handler = GetTableAmRoutine(rel->rd_amhandler);
-	RelationClose(rel);
+	auto access_method_handler = GetTableAmRoutine(rel.GetRelation()->rd_amhandler);
 
-	return make_uniq<PostgresScanFunctionData>(table);
+	return make_uniq<PostgresScanFunctionData>(std::move(rel), snapshot);
 }
 
 // Global State
@@ -113,8 +140,8 @@ PostgresScanGlobalState::PostgresScanGlobalState() {
 
 unique_ptr<GlobalTableFunctionState> PostgresScanFunction::PostgresInitGlobal(ClientContext &context,
                                                                               TableFunctionInitInput &input) {
-	auto bind_data = input.bind_data->Cast<PostgresScanFunctionData>();
-	auto table = bind_data.table;
+	auto &bind_data = input.bind_data->Cast<PostgresScanFunctionData>();
+	auto &relation = bind_data.relation;
 	return make_uniq<PostgresScanGlobalState>();
 }
 
@@ -132,6 +159,13 @@ unique_ptr<LocalTableFunctionState> PostgresScanFunction::PostgresInitLocal(Exec
 // The table scan function
 
 void PostgresScanFunction::PostgresFunc(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	auto &data = data_p.bind_data->CastNoConst<PostgresScanFunctionData>();
+	auto &lstate = data_p.local_state->Cast<PostgresScanLocalState>();
+	auto &gstate = data_p.global_state->Cast<PostgresScanGlobalState>();
+
+	auto &relation = data.relation;
+	auto snapshot = data.snapshot;
+
 	return;
 }
 
@@ -187,7 +221,14 @@ unique_ptr<TableRef> PostgresReplacementScan(ClientContext &context, const strin
 	// Then inside the table function we can scan tuples from the postgres table and convert them into duckdb vectors.
 	auto table_function = make_uniq<TableFunctionRef>();
 	vector<unique_ptr<ParsedExpression>> children;
-	children.push_back(make_uniq<ConstantExpression>(Value::POINTER(CastPointerToValue(table))));
+	// table = POINTER(table)
+	children.push_back(
+	    make_uniq<ComparisonExpression>(ExpressionType::COMPARE_EQUAL, make_uniq<ColumnRefExpression>("table"),
+	                                    make_uniq<ConstantExpression>(Value::POINTER(CastPointerToValue(table)))));
+	// snapshot = POINTER(snapshot)
+	children.push_back(make_uniq<ComparisonExpression>(
+	    ExpressionType::COMPARE_EQUAL, make_uniq<ColumnRefExpression>("snapshot"),
+	    make_uniq<ConstantExpression>(Value::POINTER(CastPointerToValue(scan_data.desc->snapshot)))));
 	table_function->function = make_uniq<FunctionExpression>("postgres_scan", std::move(children));
 	return std::move(table_function);
 }
