@@ -1,8 +1,3 @@
-
-//#ifdef FATAL
-//#undef FATAL
-//#endif
-
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/function/replacement_scan.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
