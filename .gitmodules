@@ -1,0 +1,3 @@
+[submodule "src/third_party/duckdb"]
+	path = src/third_party/duckdb
+	url = https://github.com/tishj/duckdb

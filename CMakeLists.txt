@@ -25,4 +25,6 @@ include_directories(${PostgreSQL_INCLUDE_DIRS}
                     ${PostgreSQL_SERVER_INCLUDE_DIRS})
 
 enable_testing()
+
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -DDEBUG")
 add_subdirectory(src)
