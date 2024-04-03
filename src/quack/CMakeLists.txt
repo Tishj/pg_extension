@@ -61,7 +61,7 @@ add_library(duckdb_parquet STATIC IMPORTED GLOBAL)
 set_target_properties(duckdb_parquet PROPERTIES IMPORTED_LOCATION ${install_dir}/extension/parquet/libparquet_extension.a)
 
 include_directories(third_party/duckdb/src/include)
-include_directories(src/include)
+include_directories(include)
 add_subdirectory(src)
 
 set(ALL_OBJECT_FILES ${ALL_OBJECT_FILES})
