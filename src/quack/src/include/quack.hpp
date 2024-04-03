@@ -13,10 +13,11 @@ extern "C" {
 
 #include "postgres.h"
 
-#include "storage/relfilenode.h"
+#include "storage/relfilelocator.h"
 #include "access/tupdesc.h"
 #include "access/tableam.h"
 #include "utils/rel.h"
+#include "common/relpath.h"
 
 /* Quack GUC */
 extern char *quack_data_dir;
@@ -50,7 +51,7 @@ extern void quack_append_value(Appender &appender, Oid columnOid, Datum value);
 extern unique_ptr<Appender> quack_create_appender(Connection &connection, const char *tableName);
 
 typedef struct QuackWriteState {
-	Oid rel_node;
+	RelFileNumber rel_node;
 	unique_ptr<DuckDB> database;
 	unique_ptr<Connection> connection;
 	unique_ptr<Appender> appender;

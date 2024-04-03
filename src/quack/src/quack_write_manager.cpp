@@ -7,6 +7,7 @@ extern "C" {
 #include "access/heaptoast.h"
 #include "common/hashfn.h"
 #include "executor/executor.h"
+#include "utils/relmapper.h"
 
 static HTAB *quack_write_state_map = NULL;
 static MemoryContext quack_write_state_context = NULL;
@@ -89,8 +90,10 @@ duckdb::QuackWriteState *quack_init_write_state(Relation relation, Oid databaseO
 		MemoryContextRegisterResetCallback(quack_write_state_context, &cleanup_callback);
 	}
 
+	// FIXME: not sure what the effects of the 'shared' parameter are
+	auto fileNumber = RelationMapOidToFilenumber(relation->rd_id, /*shared=*/false);
 	hash_entry =
-	    (QuackWriteStateMapEntry *)hash_search(quack_write_state_map, &relation->rd_node.relNode, HASH_ENTER, &found);
+	    (QuackWriteStateMapEntry *)hash_search(quack_write_state_map, &fileNumber, HASH_ENTER, &found);
 
 	if (!found) {
 		hash_entry->write_state_stack = NULL;
@@ -115,7 +118,7 @@ duckdb::QuackWriteState *quack_init_write_state(Relation relation, Oid databaseO
 
 	quack_write_state = (duckdb::QuackWriteState *)palloc0(sizeof(duckdb::QuackWriteState));
 
-	quack_write_state->rel_node = relation->rd_node.relNode;
+	quack_write_state->rel_node = RelationMapOidToFilenumber(relation->rd_id, false);
 	quack_write_state->database = duckdb::quack_open_database(databaseOid, true);
 	quack_write_state->connection = quack_open_connection(*quack_write_state->database);
 	quack_write_state->appender = quack_create_appender(*quack_write_state->connection, relation->rd_rel->relname.data);

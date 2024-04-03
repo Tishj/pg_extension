@@ -19,6 +19,7 @@ extern "C" {
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+#include "utils/relmapper.h"
 
 static const TupleTableSlotOps *quack_slot_callbacks(Relation rel) {
 	return &TTSOpsVirtual;
@@ -157,9 +158,16 @@ static TM_Result quack_tuple_delete(Relation rel, ItemPointer tip, CommandId cid
 	ereport(ERROR, (errmsg("quack_tuple_delete is not implemented")));
 }
 
-static TM_Result quack_tuple_update(Relation rel, ItemPointer tip, TupleTableSlot *slot, CommandId cid,
-                                    Snapshot snapshot, Snapshot crosscheck, bool wait, TM_FailureData *tmfd,
-                                    LockTupleMode *lockmode, bool *update_indexes) {
+static TM_Result quack_tuple_update(Relation rel,
+                                  ItemPointer otid,
+                                  TupleTableSlot *slot,
+                                  CommandId cid,
+                                  Snapshot snapshot,
+                                  Snapshot crosscheck,
+                                  bool wait,
+                                  TM_FailureData *tmfd,
+                                  LockTupleMode *lockmode,
+                                  TU_UpdateIndexes *update_indexes) {
 	ereport(ERROR, (errmsg("quack_tuple_update is not implemented")));
 }
 
@@ -171,7 +179,7 @@ static TM_Result quack_tuple_lock(Relation rel, ItemPointer tid, Snapshot snapsh
 static void quack_finish_bulk_insert(Relation rel, int options) {
 }
 
-static void quack_relation_set_new_filenode(Relation rel, const RelFileNode *newrnode, char persistence,
+static void quack_relation_set_new_filenode(Relation rel, const RelFileNumber newrnode, char persistence,
                                             TransactionId *freezeXid, MultiXactId *minmulti) {
 
 	if (persistence == RELPERSISTENCE_UNLOGGED) {
@@ -184,7 +192,7 @@ static void quack_relation_set_new_filenode(Relation rel, const RelFileNode *new
 	 * state. If they are equal, this is a new relation object and we don't
 	 * need to clean anything.
 	 */
-	if (rel->rd_node.relNode != newrnode->relNode) {
+	if (RelationMapOidToFilenumber(rel->rd_id, false) != newrnode) {
 		// acropolis_drop_table(rel);
 	}
 }
@@ -193,7 +201,7 @@ static void quack_relation_nontransactional_truncate(Relation rel) {
 	elog(ERROR, "quack_relation_nontransactional_truncate not implemented");
 }
 
-static void quack_relation_copy_data(Relation rel, const RelFileNode *newrnode) {
+static void quack_relation_copy_data(Relation rel, const RelFileLocator *newrlocator) {
 	elog(ERROR, "quack_relation_copy_data not implemented");
 }
 
@@ -282,7 +290,6 @@ static const TableAmRoutine quack_am_methods = {.type = T_TableAmRoutine,
                                                 .tuple_lock = quack_tuple_lock,
                                                 .finish_bulk_insert = quack_finish_bulk_insert,
 
-                                                .relation_set_new_filenode = quack_relation_set_new_filenode,
                                                 .relation_nontransactional_truncate =
                                                     quack_relation_nontransactional_truncate,
                                                 .relation_copy_data = quack_relation_copy_data,
