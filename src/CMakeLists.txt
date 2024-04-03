@@ -14,7 +14,4 @@
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -DDEBUG")
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-
 add_subdirectory(quack)
-#add_subdirectory(quaternion)
